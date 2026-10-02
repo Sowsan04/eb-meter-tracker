@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1826a8">
+<link rel="manifest" href="manifest.json">
+<title>EB Meter Tracker</title>
+<style>
+:root{--p:#1826a8;--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#687386}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,Segoe UI,sans-serif;background:var(--bg);color:var(--text)}
+header{background:var(--p);color:white;padding:22px 18px 18px;border-radius:0 0 24px 24px}
+header h1{margin:0;font-size:24px}header p{margin:5px 0 0;opacity:.85}
+main{padding:16px;max-width:650px;margin:auto}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card{background:var(--card);border-radius:18px;padding:16px;margin-bottom:12px;box-shadow:0 2px 12px #0000000b}
+.big{font-size:27px;font-weight:800}.muted{color:var(--muted);font-size:13px}
+button,.filebtn{border:0;border-radius:14px;padding:14px 16px;font-size:15px;font-weight:700;cursor:pointer}
+.primary{background:var(--p);color:white;width:100%}.secondary{background:#e9ecff;color:var(--p);width:100%}
+input,select{width:100%;padding:13px;border:1px solid #d8dce6;border-radius:12px;font-size:16px;background:white}
+label{display:block;font-size:13px;color:var(--muted);margin:12px 0 6px}
+nav{position:fixed;bottom:0;left:0;right:0;background:white;border-top:1px solid #ddd;display:flex;justify-content:space-around;padding:9px 4px calc(9px + env(safe-area-inset-bottom));z-index:10}
+nav button{background:none;color:#687386;padding:8px;font-size:12px}nav button.active{color:var(--p)}
+.page{display:none;padding-bottom:90px}.page.active{display:block}
+#photoPreview{width:100%;max-height:300px;object-fit:contain;border-radius:14px;background:#eee;display:none;margin:12px 0}
+.row{display:flex;gap:10px}.row>*{flex:1}
+canvas{width:100%;height:220px}.reading{display:flex;justify-content:space-between;align-items:center;padding:13px 0;border-bottom:1px solid #eee}
+.warn{background:#fff3cd;padding:12px;border-radius:12px;font-size:13px;margin:10px 0}.ok{background:#e7f7ed;padding:12px;border-radius:12px;font-size:13px}
+</style>
+</head>
+<body>
+<header><h1>⚡ EB Meter Tracker</h1><p>Daily meter readings & consumption</p></header>
+<main>
+<section id="home" class="page active">
+<div class="card"><div class="muted">Current Meter Reading</div><div id="current" class="big">—</div></div>
+<div class="grid">
+<div class="card"><div class="muted">Latest Usage</div><div id="latest" class="big">—</div></div>
+<div class="card"><div class="muted">This Month</div><div id="month" class="big">—</div></div>
+</div>
+<div class="card"><div class="muted">Average / Day</div><div id="avg" class="big">—</div></div>
+<div class="card"><button class="primary" onclick="show('add')">📷 Record Meter Reading</button></div>
+<div id="setupNotice" class="card warn">Set your starting reading before tracking your EB usage.</div>
+</section>
+
+<section id="add" class="page">
+<div class="card">
+<h2>Record Reading</h2>
+<label>Meter photo</label>
+<div class="row">
+<label class="filebtn secondary" style="text-align:center">📷 Camera<input id="camera" type="file" accept="image/*" capture="environment" style="display:none"></label>
+<label class="filebtn secondary" style="text-align:center">🖼️ Upload<input id="gallery" type="file" accept="image/*" style="display:none"></label>
+</div>
+<img id="photoPreview">
+<div id="ocrStatus" class="muted" style="margin-top:8px">Choose a photo. OCR will suggest a reading.</div>
+<label>Confirmed meter reading (units)</label>
+<input id="reading" type="number" step="0.1" placeholder="Example: 1258.4">
+<label>Date</label><input id="readingDate" type="date">
+<div id="validation"></div>
+<br><button class="primary" onclick="saveReading()">✓ Confirm & Save Reading</button>
+</div>
+</section>
+
+<section id="analytics" class="page">
+<div class="card"><h2>Daily Consumption</h2><canvas id="chart"></canvas></div>
+<div class="card"><h2>Comparison</h2><div id="comparison"></div></div>
+</section>
+
+<section id="history" class="page">
+<div class="card"><h2>Reading History</h2><div id="historyList"></div></div>
+</section>
+
+<section id="settings" class="page">
+<div class="card"><h2>Meter Setup</h2>
+<label>Starting reading</label><input id="startReading" type="number" step="0.1" placeholder="Example: 1000.0">
+<label>Starting reading date</label><input id="startDate" type="date">
+<label>Billing cycle</label><select id="cycle"><option value="60">60 days</option><option value="30">30 days</option><option value="90">90 days</option></select>
+<br><br><button class="primary" onclick="saveSetup()">Save Setup</button>
+</div>
+<div class="card"><h2>Data</h2><button class="secondary" onclick="exportData()">Export readings</button></div>
+</section>
+</main>
+<nav>
+<button id="n-home" class="active" onclick="show('home')">🏠<br>Home</button>
+<button id="n-add" onclick="show('add')">📷<br>Record</button>
+<button id="n-analytics" onclick="show('analytics')">📊<br>Analytics</button>
+<button id="n-history" onclick="show('history')">🧾<br>History</button>
+<button id="n-settings" onclick="show('settings')">⚙️<br>Setup</button>
+</nav>
+
+<script>
+const KEY='eb_readings_v1', SET='eb_setup_v1';
+let readings=JSON.parse(localStorage.getItem(KEY)||'[]'), setup=JSON.parse(localStorage.getItem(SET)||'null');
+
+function today(){return new Date().toISOString().slice(0,10)}
+document.getElementById('readingDate').value=today();
+if(setup){startReading.value=setup.start;startDate.value=setup.date;cycle.value=setup.cycle}
+function save(){localStorage.setItem(KEY,JSON.stringify(readings));}
+function show(id){
+ document.querySelectorAll('.page').forEach(x=>x.classList.remove('active'));
+ document.getElementById(id).classList.add('active');
+ document.querySelectorAll('nav button').forEach(x=>x.classList.remove('active'));
+ document.getElementById('n-'+id)?.classList.add('active');
+ refresh();
+}
+function saveSetup(){
+ const s=parseFloat(startReading.value);
+ if(isNaN(s)||!startDate.value){alert('Enter starting reading and date.');return}
+ setup={start:s,date:startDate.value,cycle:parseInt(cycle.value)};localStorage.setItem(SET,JSON.stringify(setup));
+ if(!readings.length){readings=[{date:setup.date,value:s,photo:null}];save()}
+ alert('Setup saved.');show('home');
+}
+function refresh(){
+ readings.sort((a,b)=>a.date.localeCompare(b.date));
+ const last=readings.at(-1), prev=readings.at(-2);
+ current.textContent=last?last.value.toFixed(1)+' units':'—';
+ latest.textContent=last&&prev?(last.value-prev.value).toFixed(1)+' units':'—';
+ const now=new Date(), ym=now.toISOString().slice(0,7);
+ const m=readings.filter(x=>x.date.slice(0,7)===ym);
+ month.textContent=m.length>1?(m.at(-1).value-m[0].value).toFixed(1)+' units':'—';
+ const d=m.length>1?(new Date(m.at(-1).date)-new Date(m[0].date))/86400000;
+ avg.textContent=d>0?((m.at(-1).value-m[0].value)/d).toFixed(2)+' units':'—';
+ setupNotice.style.display=setup?'none':'block';
+ renderHistory();renderAnalytics();
+}
+function renderHistory(){
+ historyList.innerHTML=readings.slice().reverse().map((x,i)=>{
+ const idx=readings.indexOf(x),u=idx?x.value-readings[idx-1].value:null;
+ return `<div class="reading"><div><b>${x.value.toFixed(1)} units</b><br><span class="muted">${x.date}${u===null?' • Starting reading':' • '+u.toFixed(1)+' units consumed'}</span></div><span>${x.photo?'📷':''}</span></div>`;
+ }).join('')||'<div class="muted">No readings yet.</div>';
+}
+function renderAnalytics(){
+ const ctx=document.getElementById('chart').getContext('2d'),w=chart.width=chart.clientWidth*2,h=chart.height=440;
+ ctx.clearRect(0,0,w,h);if(readings.length<2){comparison.innerHTML='Add at least two readings to compare usage.';return}
+ const vals=readings.slice(1).map((x,i)=>x.value-readings[i].value), max=Math.max(...vals,1);
+ ctx.strokeStyle='#1826a8';ctx.lineWidth=5;ctx.beginPath();
+ vals.forEach((v,i)=>{const x=25+i*(w-50)/Math.max(vals.length-1,1),y=h-35-(v/max)*(h-70);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();
+ const now=Date.now(), week=readings.filter(x=>now-new Date(x.date)<7*86400000),last=readings.filter(x=>now-new Date(x.date)>=7*86400000&&now-new Date(x.date)<14*86400000);
+ const use=a=>a.length>1?a.at(-1).value-a[0].value:0;
+ comparison.innerHTML=`<div class="ok">This week: <b>${use(week).toFixed(1)} units</b><br>Last week: <b>${use(last).toFixed(1)} units</b></div>`;
+}
+async function processImage(file){
+ if(!file)return;photoPreview.src=URL.createObjectURL(file);photoPreview.style.display='block';
+ ocrStatus.textContent='Photo selected. Preparing OCR…';
+ // V1 uses an optional browser OCR hook. If Tesseract.js is added later, this function can populate the field automatically.
+ // We intentionally require user confirmation for meter digits.
+ ocrStatus.textContent='Please enter/confirm the meter reading shown in the photo.';
+ window.lastPhoto=file.name;
+}
+camera.onchange=e=>processImage(e.target.files[0]);gallery.onchange=e=>processImage(e.target.files[0]);
+function saveReading(){
+ const v=parseFloat(reading.value),d=readingDate.value;if(isNaN(v)||!d){alert('Enter the meter reading and date.');return}
+ const last=readings.at(-1);
+ validation.innerHTML='';
+ if(last&&v<last.value){validation.innerHTML='<div class="warn">⚠️ This reading is lower than the previous reading. Check the photo before saving.</div>';return}
+ readings.push({date:d,value:v,photo:window.lastPhoto||null});save();alert('Reading saved.');reading.value='';show('home');
+}
+function exportData(){
+ const blob=new Blob([JSON.stringify({setup,readings},null,2)],{type:'application/json'}),a=document.createElement('a');
+ a.href=URL.createObjectURL(blob);a.download='eb_meter_data.json';a.click();
+}
+refresh();
+</script>
+</body></html>
