@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#1826a8">
-<link rel="manifest" href="manifest.json">
+<link rel="manifest" href="manifest.json"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default">
 <title>EB Meter Tracker</title>
 <style>
 :root{--p:#1826a8;--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#687386}
@@ -159,4 +159,4 @@ function exportData(){
 }
 refresh();
 </script>
-</body></html>
+<script>if("serviceWorker" in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js").catch(()=>{}));}</script></body></html>
